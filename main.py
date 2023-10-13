@@ -1,6 +1,8 @@
 import cv2
 import pyzbar.pyzbar as pyzbar
 
+from settings import Settings
+
 from collections import deque
 import winsound as ws
 import time
@@ -9,7 +11,66 @@ import pandas as pd
 import sys
 
 
-def confirm_student(student_id, scanned_id_list) -> None:
+def config_settings() -> tuple:
+    """프로그램 설정 함수
+
+    Returns:
+        tuple(str, int, bool, cv2.VideoCapture, pd.DataFrame, list): 설정된 데이터베이스 경로, 카메라 번호, 회비 납부 확인 여부, 카메라 객체, 데이터베이스, 학생의 학번 리스트
+    """
+    
+    db_path = ''
+    cam_num = 0
+    student_fee_check = ''
+    
+    settings = Settings(db_path, get_num_of_cam(), cam_num, student_fee_check)
+    settings.display()
+    
+    db_path = settings.db_path
+    cam_num = settings.cam_num
+    student_fee_check = settings.student_fee_check
+    
+    cap = cv2.VideoCapture(cam_num)
+    
+    db = pd.read_csv(db_path, usecols=[1, 2, 3]).dropna(subset=['student_id'])
+    student_id_list = db['student_id'].tolist()
+    
+    return (db_path, cam_num, student_fee_check, cap, db, student_id_list)
+
+
+def get_num_of_cam() -> int:
+    """연결된 카메라 개수 확인 함수
+
+    Returns:
+        int: 연결된 카메라 개수
+    """
+    
+    num_of_cam = 0
+    while True:
+        cap = cv2.VideoCapture(num_of_cam)
+        if not cap.read()[0]:
+            break
+        num_of_cam += 1
+        cap.release()
+            
+    return num_of_cam
+
+def is_dues_checked(student_fee_check: bool, student_id: int) -> bool:
+    """회비 납부 확인 함수
+
+    Args:
+        student_fee_check (bool): 회비 납부 확인 여부
+        student_id (int): 학생의 학번
+
+    Returns:
+        bool: 회비 납부 여부
+    """
+    
+    if not student_fee_check:
+        return True
+    else:
+        return True if db[db['student_id'] == str(student_id)]['dues'].tolist()[0] == 1 else False
+
+def confirm_student(student_id: int, scanned_id_list: deque) -> None:
     """학생 인증 확인 함수
 
     Args:
@@ -28,7 +89,21 @@ def confirm_student(student_id, scanned_id_list) -> None:
     print('인증되었습니다.')
     print('----------------------------------\n')
     
-def deny_overlap_student(student_id) -> None:
+def deny_dues_not_paid(student_id: int) -> None:
+    """미납 회비 거부 함수
+
+    Args:
+        student_id (int): 학생의 학번
+    """
+    
+    ws.Beep(1500, 50)
+    ws.Beep(1500, 50)
+    
+    print(f'학번 : {student_id}')
+    print('회비 미납부 학생입니다.')
+    print('----------------------------------\n')
+    
+def deny_overlap_student(student_id: int) -> None:
     """학생 중복 인증 거부 함수
 
     Args:
@@ -42,7 +117,7 @@ def deny_overlap_student(student_id) -> None:
     print('이미 배부받은 학생입니다.')
     print('----------------------------------\n')
     
-def deny_unknown_student(student_id) -> None:
+def deny_unknown_student(student_id: int) -> None:
     """학생 미인증 거부 함수
 
     Args:
@@ -57,14 +132,8 @@ def deny_unknown_student(student_id) -> None:
 
 
 if __name__ == '__main__':
-    db_path = '../student_list.csv'
+    db_path, cam_num, student_fee_check, cap, db, student_id_list = config_settings()
     
-    db = pd.read_csv(db_path, usecols=[1, 2, 3])\
-            .dropna(subset=['student_id'])
-            
-    student_id_list = db['student_id'].tolist()
-    
-    cap = cv2.VideoCapture(0)
     scanned_id_list = deque()
     scan_time = 0
 
@@ -91,9 +160,15 @@ if __name__ == '__main__':
         for obj in decodedObjects:
             if obj.type == 'QRCODE':
                 student_id = obj.data.decode('utf-8')[:10]
-                if student_id not in scanned_id_list and student_id in student_id_list:
+                if is_dues_checked(student_fee_check, student_id) and \
+                        student_id not in scanned_id_list and \
+                        student_id in student_id_list:
                     scan_time = time.time()
                     confirm_student(student_id, scanned_id_list)
+                    
+                elif not is_dues_checked(student_fee_check, student_id) and time.time() - scan_time > 3:
+                    scan_time = time.time()
+                    deny_dues_not_paid(student_id)
                     
                 elif student_id in scanned_id_list and time.time() - scan_time > 3:
                     scan_time = time.time()
