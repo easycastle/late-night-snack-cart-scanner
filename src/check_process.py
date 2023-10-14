@@ -1,13 +1,14 @@
 import cv2
 import pyzbar.pyzbar as pyzbar
 
+import pandas as pd
+import openpyxl
+import winsound as ws
+import time
+
 from settings import Settings
 
 from collections import deque
-import winsound as ws
-import time
-import pandas as pd
-
 import sys
 
 
@@ -34,6 +35,12 @@ def config_settings() -> tuple:
     db = pd.read_csv(db_path, usecols=[1, 2, 3]).dropna(subset=['student_id'])
     student_id_list = db['student_id'].tolist()
     
+    for i in range(len(student_id_list)):
+        if student_id_list[i].isdigit():
+            student_id_list[i] = int(student_id_list[i])
+        else:
+            student_id_list[i] = 0
+
     return (db_path, cam_num, student_fee_check, cap, db, student_id_list)
 
 def set_pre_scanned_id_list() -> deque:
@@ -46,12 +53,13 @@ def set_pre_scanned_id_list() -> deque:
     scanned_id_list = deque()
     
     try:
-        with open('student_id.txt', 'r+') as f:
-            for line in f.readlines():
-                scanned_id_list.append(line.strip())
+        student_data = pd.read_excel('student_data.xlsx', sheet_name=time.strftime('%Y-%m-%d'), engine='openpyxl')
+        scanned_id_list = deque(student_data['학번'].tolist())
     except FileNotFoundError:
-        with open('student_id.txt', 'w') as f:
-            pass
+        wb = openpyxl.Workbook()
+        sheet = wb.create_sheet(time.strftime('%Y-%m-%d'))
+        sheet.append(['학번', '이름'])
+        wb.save('student_data.xlsx')
             
     return scanned_id_list
 
@@ -89,10 +97,11 @@ def is_dues_checked(db: pd.DataFrame, student_fee_check: bool, student_id: int) 
     else:
         return True if db[db['student_id'] == str(student_id)]['dues'].tolist()[0] == 1 else False
 
-def confirm_student(student_id: int, scanned_id_list: deque) -> None:
+def confirm_student(db: pd.DataFrame, student_id: int, scanned_id_list: deque) -> None:
     """학생 인증 확인 함수
 
     Args:
+        db (pd.DataFrame): 데이터베이스
         student_id (int): 학생의 학번
         scanned_id_list (deque): 인증된 학생의 학번 리스트
     """
@@ -101,8 +110,10 @@ def confirm_student(student_id: int, scanned_id_list: deque) -> None:
     
     scanned_id_list.append(student_id)
     
-    with open('student_id.txt', 'a+') as f:
-        f.write(student_id + '\n')
+    wb = openpyxl.load_workbook('student_data.xlsx')
+    sheet = wb[time.strftime('%Y-%m-%d')]
+    sheet.append([student_id, db[db['student_id'] == str(student_id)]['name'].tolist()[0]])
+    wb.save('student_data.xlsx')
     
     print(f'학번 : {student_id}')
     print('인증되었습니다.')
@@ -170,7 +181,7 @@ def check_student_id(db: pd.DataFrame, student_id: int, student_id_list: list, \
         
         if is_dues_paid:
             if not is_scanned:
-                confirm_student(student_id, scanned_id_list)
+                confirm_student(db, student_id, scanned_id_list)
             elif time.time() - scan_time > 3:
                 deny_overlap_student(student_id)
         else:
