@@ -19,7 +19,7 @@ while True:
 
     for obj in decodedObjects:
         if obj.type == 'QRCODE':
-            student_id = obj.data.decode('utf-8')[:10]
+            student_id = int(obj.data.decode('utf-8')[:10])
             check_student_id(db, student_id, student_id_list, scanned_id_list, student_fee_check, scan_time)
             scan_time = time.time()
             
