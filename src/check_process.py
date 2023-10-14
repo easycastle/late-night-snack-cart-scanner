@@ -1,13 +1,14 @@
 import cv2
 import pyzbar.pyzbar as pyzbar
 
+import pandas as pd
+import openpyxl
+import winsound as ws
+import time
+
 from settings import Settings
 
 from collections import deque
-import winsound as ws
-import time
-import pandas as pd
-
 import sys
 
 
@@ -46,12 +47,12 @@ def set_pre_scanned_id_list() -> deque:
     scanned_id_list = deque()
     
     try:
-        with open('student_id.txt', 'r+') as f:
-            for line in f.readlines():
-                scanned_id_list.append(line.strip())
+        student_data = pd.read_excel('student_data.xlsx', sheet_name=time.strftime('%m/%d'), engine='openpyxl')
+        scanned_id_list = deque(student_data['학번'].tolist())
     except FileNotFoundError:
-        with open('student_id.txt', 'w') as f:
-            pass
+        wb = openpyxl.Workbook()
+        wb.create_sheet(time.strftime('%Y-%m-%d'))
+        wb.save('student_data.xlsx')
             
     return scanned_id_list
 
